@@ -1,0 +1,124 @@
+
+%% BENG 110 - Homework 7
+% 2D Homogeneous Strain Analysis
+% Calculates strain from three reference and deformed markers.
+% Includes rigid-body rotation correction and coordinate rotation.
+
+clear;
+clc;
+
+%% INPUT COORDINATES
+% Each row represents one marker: A, B, C
+% Columns represent x and y coordinates.
+
+X_ref = [0  0;
+             10 0;
+             0  10];
+
+% Example deformation: 1% x stretch, 1% y compression,
+% followed by a 10 degree rigid-body rotation.
+
+theta = deg2rad(10);
+
+R_test = [cos(theta), -sin(theta);
+          sin(theta),  cos(theta)];
+
+U_test = [1.01 0;
+              0    0.99];
+
+F_test = R_test * U_test;
+
+X_def = (F_test * X_ref')';
+
+% User-selected coordinate axis rotation (degrees)
+axis_angle = 30;
+
+%% CALCULATE DISPLACEMENTS
+
+D = X_def - X_ref;
+
+% Displacements of A, B, C
+u = D(:,1);
+v = D(:,2);
+
+%% SOLVE FOR DISPLACEMENT GRADIENTS
+
+% Coordinate differences relative to A
+M = [X_ref(2,:) - X_ref(1,:);
+     X_ref(3,:) - X_ref(1,:)];
+
+% Check whether triangle is degenerate or poorly conditioned
+if rcond(M) < 1e-10
+    error('Triangle is degenerate or nearly collinear.');
+end
+
+% Solve for displacement gradients
+grad_u = M \ [u(2)-u(1);
+              u(3)-u(1)];
+
+grad_v = M \ [v(2)-v(1);
+              v(3)-v(1)];
+
+% Deformation gradient
+F = eye(2) + [grad_u(1), grad_u(2);
+              grad_v(1), grad_v(2)];
+
+%% DETECT AND REMOVE RIGID BODY ROTATION
+
+% Reject reflected or inverted configurations
+if det(F) <= 0
+    error('Deformation gradient indicates inversion or reflection.');
+end
+
+% Polar decomposition using singular value decomposition
+[U_svd, S, V_svd] = svd(F);
+
+R = U_svd * V_svd';
+
+% Extract rigid body rotation angle
+rotation_angle = atan2(R(2,1), R(1,1));
+
+% Remove rotation
+U_stretch = R' * F;
+
+% Corrected infinitesimal strain
+epsilon = 0.5 * (U_stretch + U_stretch') - eye(2);
+
+%% ROTATE COORDINATE AXES
+
+phi = deg2rad(axis_angle);
+
+Q = [cos(phi), -sin(phi);
+     sin(phi),  cos(phi)];
+
+epsilon_rotated = Q' * epsilon * Q;
+
+%% DISPLAY RESULTS
+
+fprintf('\n--- STRAIN ANALYSIS RESULTS ---\n');
+
+fprintf('\nDisplacement gradient:\n');
+disp(F - eye(2));
+
+fprintf('Deformation gradient:\n');
+disp(F);
+
+fprintf('Detected rigid-body rotation: %.4f degrees\n', ...
+        rad2deg(rotation_angle));
+
+fprintf('\nRotation-corrected stretch tensor:\n');
+disp(U_stretch);
+
+fprintf('Strain tensor in original axes:\n');
+disp(epsilon);
+
+fprintf('Strain tensor in rotated axes (%.2f degrees):\n', ...
+        axis_angle);
+disp(epsilon_rotated);
+
+fprintf('Strain components:\n');
+fprintf('epsilon_xx = %.6f\n', epsilon(1,1));
+fprintf('epsilon_yy = %.6f\n', epsilon(2,2));
+fprintf('epsilon_xy = %.6f\n', epsilon(1,2));
+
+
